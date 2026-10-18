@@ -1,31 +1,35 @@
+"""
+Traveler Intelligent Intake Microservice
+Description: Ingests unstructured customer WhatsApp messages, validates booking
+parameters into strict JSON via Google Gemini API, and computes projected gross booking margins.
+"""
+
 import json
-from google.colab import userdata
+import os
 from google import genai
 from google.genai import types
 
-# 1. AUTHENTICATE SECURELY FROM COLAB SECRETS
-api_key = userdata.get('GEMINI_API_KEY')
+# 1. AUTHENTICATION & CLIENT INITIALIZATION
+# Reads GEMINI_API_KEY from environment variables
+api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key)
 
-# 2. RAW CLIENT INTAKE (Simulating an Incoming WhatsApp Message)
-raw_whatsapp_message = (
+# 2. RAW CLIENT INTAKE PAYLOAD
+raw_message = (
     "Hola, soy el socio 334129. Quiero cotizar hotel todo incluido en Cancún "
     "del 12 al 16 de noviembre para 2 adultos y 1 niño de 8 años. Presupuesto $45,000 MXN."
 )
 
-print(f"📩 Incoming Unstructured WhatsApp Message:\n'{raw_whatsapp_message}'\n")
-
-# 3. DEFINE SYSTEM INSTRUCTION & EXTRACTION SCHEMA
 system_instruction = (
     "You are the Lead Intake AI Architect for Traveler Club (traveler.com.mx). "
-    "Your job is to parse incoming messy travel requests into a strict JSON object. "
+    "Your job is to parse incoming travel requests into a strict JSON object. "
     "Never invent missing dates; if incomplete, mark is_complete as false. "
     "Always return valid JSON matching the requested keys."
 )
 
 extraction_prompt = f"""
 Extract the travel booking details from this message:
-"{raw_whatsapp_message}"
+"{raw_message}"
 
 Required JSON Schema:
 {{
@@ -41,30 +45,20 @@ Required JSON Schema:
 }}
 """
 
-print("📡 Sending extraction request to Gemini API (Enforcing Structured JSON Mode)...")
-
-# 4. EXECUTE API CALL WITH NATIVE JSON MIME-TYPE (Zero Backticks Guarantee)
+# 3. EXECUTE STRUCTURED JSON EXTRACTION
 response = client.models.generate_content(
-    model="gemini-3.6-flash",
+    model="gemini-2.5-flash",
     contents=extraction_prompt,
     config=types.GenerateContentConfig(
         system_instruction=system_instruction,
-        temperature=0.1,  # Low temperature = high extraction fidelity
-        response_mime_type="application/json"  # <-- The secret weapon for clean JSON
+        temperature=0.1,
+        response_mime_type="application/json"
     )
 )
 
-# 5. PYTHON POST-PROCESSING: PARSE RAW TEXT INTO A NATIVE PYTHON DICTIONARY
-# json.loads() converts the JSON string into a live Python dictionary
-try:
-    parsed_quote = json.loads(response.text)
-    print("✅ JSON successfully parsed into a native Python dictionary.\n")
-except json.JSONDecodeError as e:
-    print("❌ Failed to parse JSON string:")
-    print(response.text)
-    raise e
+parsed_quote = json.loads(response.text)
 
-# 6. EXECUTIVE CONFIRMATION & KEY ACCESS
+# 4. EXECUTIVE CONFIRMATION & MARGIN AUDIT
 print("=================== EXECUTIVE INTAKE CONFIRMATION ===================")
 print(f"Member ID:            {parsed_quote['member_id']}")
 print(f"Destination:          {parsed_quote['destination']}")
@@ -72,10 +66,9 @@ print(f"Travel Dates:         {parsed_quote['arrival_date']} to {parsed_quote['d
 print(f"Travelers:            {parsed_quote['adults_count']} Adults | {parsed_quote['kids_count']} Kids (Age: {parsed_quote['kids_ages']})")
 print(f"Target Budget:        ${parsed_quote['budget_mxn']:,.2f} MXN")
 print(f"Request Complete?:    {'🟢 YES (Ready for Quoting)' if parsed_quote['is_complete'] else '🔴 NO (Missing Info)'}")
-print("=====================================================================")
 
-# 7. PROOF OF PROGRAMMATIC DATA ACCESS
-# Show that we can now do math directly on the parsed dictionary:
-standard_margin_target = 0.18  # 18% Traveler Club margin
-potential_gross_margin = parsed_quote["budget_mxn"] * standard_margin_target
-print(f"💰 Projected Gross Margin Opportunity: ${potential_gross_margin:,.2f} MXN")
+# Projected Gross Margin Calculation
+TARGET_MARGIN = 0.18  # 18% Traveler Club margin
+projected_margin = parsed_quote["budget_mxn"] * TARGET_MARGIN
+print(f"Projected Margin:     ${projected_margin:,.2f} MXN")
+print("=====================================================================")
